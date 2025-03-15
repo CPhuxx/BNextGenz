@@ -3,21 +3,21 @@ const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const path = require("path");
-const db = require("./config/db"); // อัปเดตเส้นทางไฟล์ฐานข้อมูล
-const authRoutes = require("./routes/authRoutes");
-const topupRoutes = require("./routes/topupRoutes");
-
+const db = require("./config/db"); // Database configuration
+const authRoutes = require("./routes/authRoutes"); // Import authentication routes
 const app = express();
+
 const PORT = process.env.PORT || 4000;
 
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+// Middleware Setup
+app.use(cors({ origin: "http://localhost:5173", credentials: true })); // Allow frontend to access backend
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// Routes
 app.use("/api/auth", authRoutes);
-app.use("/api/topup", topupRoutes);
 
+// Start Server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`Server is running on http://localhost:${PORT}`);
 });
