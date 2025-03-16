@@ -39,4 +39,22 @@ router.delete("/delete-user/:id", (req, res) => {
   });
 });
 
+// ** เพิ่มเส้นทางสำหรับการเพิ่มสินค้าใหม่ **
+router.post("/add-product", (req, res) => {
+  const { name, description, price, category } = req.body;
+
+  // ตรวจสอบข้อมูลที่จำเป็น
+  if (!name || !description || !price || !category) {
+    return res.status(400).json({ message: "กรุณากรอกข้อมูลสินค้าให้ครบถ้วน" });
+  }
+
+  const query = "INSERT INTO products (name, description, price, category) VALUES (?, ?, ?, ?)";
+  db.query(query, [name, description, price, category], (err, result) => {
+    if (err) {
+      return res.status(500).json({ message: "Error adding product", error: err });
+    }
+    return res.status(200).json({ message: "Product added successfully", result });
+  });
+});
+
 module.exports = router;
