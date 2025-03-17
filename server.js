@@ -11,10 +11,11 @@ const authRoutes = require("./routes/authRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
 const userRoutes = require("./routes/userRoutes");
 const orderRoutes = require("./routes/orderRoutes");
+const moneyRoutes = require("./routes/moneyRoutes"); // ✅ เพิ่ม API เช็คยอดเงิน
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const BYSHOP_API_KEY = "BYShop-m0XNSdX68cilPrX9gcZ81arPPN4NJv";
+const BYSHOP_API_KEY = process.env.BYSHOP_API_KEY; // ✅ ใช้ API Key จาก .env
 
 // 🔹 ตั้งค่าอัปโหลดไฟล์
 const storage = multer.diskStorage({
@@ -45,32 +46,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", userRoutes);
 app.use("/api/admin/upload-banner", upload.single("banner"), bannerRoutes);
 app.use("/api/order-history", orderRoutes);
-
-// ✅ **API เช็คยอดเงินจาก ByShop**
-app.post("/api/money", async (req, res) => {
-  try {
-    const response = await axios.post(
-      "https://byshop.me/api/money",
-      { keyapi: BYSHOP_API_KEY },
-      { timeout: 10000 }
-    );
-
-    console.log("📢 API Response (Money Check):", response.data);
-
-    if (response.data.status === "success") {
-      res.json({ status: "success", money: parseFloat(response.data.money) });
-    } else {
-      res.status(400).json({ status: "error", message: "❌ ไม่สามารถดึงยอดเงินได้" });
-    }
-  } catch (error) {
-    console.error("❌ Error fetching money:", error.response ? error.response.data : error.message);
-    res.status(500).json({
-      status: "error",
-      message: "❌ เกิดข้อผิดพลาดในการดึงยอดเงิน",
-      error: error.response ? error.response.data : error.message,
-    });
-  }
-});
+app.use("/api/money", moneyRoutes); // ✅ เพิ่ม API เช็คยอดเงิน
 
 // ✅ **API Proxy ดึงสินค้าจาก ByShop**
 app.get("/api/products", async (req, res) => {
