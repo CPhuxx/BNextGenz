@@ -11,11 +11,11 @@ const authRoutes = require("./routes/authRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
 const userRoutes = require("./routes/userRoutes");
 const orderRoutes = require("./routes/orderRoutes");
-const moneyRoutes = require("./routes/moneyRoutes"); // ✅ เพิ่ม API เช็คยอดเงิน
+const moneyRoutes = require("./routes/moneyRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const BYSHOP_API_KEY = process.env.BYSHOP_API_KEY; // ✅ ใช้ API Key จาก .env
+const BYSHOP_API_KEY = process.env.BYSHOP_API_KEY;
 
 // 🔹 ตั้งค่าอัปโหลดไฟล์
 const storage = multer.diskStorage({
@@ -46,7 +46,40 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", userRoutes);
 app.use("/api/admin/upload-banner", upload.single("banner"), bannerRoutes);
 app.use("/api/order-history", orderRoutes);
-app.use("/api/money", moneyRoutes); // ✅ เพิ่ม API เช็คยอดเงิน
+app.use("/api/money", moneyRoutes);
+
+// ✅ **API เช็คยอดเงินจากบัญชีธนาคาร (ByShop)**
+app.post("/api/bank-transactions", async (req, res) => {
+  try {
+    const { account } = req.body;
+    if (!account) {
+      return res.status(400).json({ status: "error", message: "❌ ต้องระบุหมายเลขบัญชี" });
+    }
+
+    const response = await axios.post("https://byshop.me/api/line_bank", {
+      keyapi: BYSHOP_API_KEY,
+      account,
+    });
+
+    console.log("📢 API Response (Bank Transactions):", response.data);
+
+    if (response.data.status === "success") {
+      res.json({
+        status: "success",
+        transactions: response.data.data,
+      });
+    } else {
+      res.status(400).json({ status: "error", message: "❌ ไม่สามารถดึงข้อมูลธุรกรรมได้" });
+    }
+  } catch (error) {
+    console.error("❌ Error fetching bank transactions:", error.response ? error.response.data : error.message);
+    res.status(500).json({
+      status: "error",
+      message: "❌ เกิดข้อผิดพลาดในการดึงข้อมูลธุรกรรม",
+      error: error.response ? error.response.data : error.message,
+    });
+  }
+});
 
 // ✅ **API Proxy ดึงสินค้าจาก ByShop**
 app.get("/api/products", async (req, res) => {
@@ -58,19 +91,16 @@ app.get("/api/products", async (req, res) => {
       timeout: 10000,
     });
 
-    console.log("📥 API Response:", response.data);
-
     if (response.data && Array.isArray(response.data)) {
       res.json({ status: "success", products: response.data });
     } else {
-      res.status(400).json({ 
-        status: "error", 
-        message: "❌ ไม่สามารถดึงข้อมูลสินค้าได้ โปรดตรวจสอบ API",
-        error: response.data 
+      res.status(400).json({
+        status: "error",
+        message: "❌ ไม่สามารถดึงข้อมูลสินค้าได้",
+        error: response.data,
       });
     }
   } catch (error) {
-    console.error("❌ API Error:", error.response ? error.response.data : error.message);
     res.status(500).json({
       status: "error",
       message: "❌ เกิดข้อผิดพลาดในการดึงข้อมูลสินค้า",
