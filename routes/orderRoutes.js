@@ -3,47 +3,48 @@ const axios = require("axios");
 const router = express.Router();
 
 const BYSHOP_API_KEY = "BYShop-m0XNSdX68cilPrX9gcZ81arPPN4NJv";
-const USERNAME = "puridet009"; // ใช้ username ที่กำหนด
 
-// ✅ **API Proxy ทำรายการสั่งซื้อผ่าน ByShop**
-router.post("/buy", async (req, res) => {
-  const { id } = req.body;
+// ✅ **API ดึงประวัติการสั่งซื้อจาก ByShop**
+router.post("/history", async (req, res) => {
+  const { username, orderid } = req.body;
 
-  // 🔍 ตรวจสอบค่าที่จำเป็น
-  if (!id) {
-    return res.status(400).json({ status: "error", message: "❌ กรุณาระบุ ID สินค้า" });
+  // 🔍 ตรวจสอบว่ามีค่า username หรือ orderid หรือไม่
+  if (!username && !orderid) {
+    return res.status(400).json({ status: "error", message: "❌ กรุณาระบุ username หรือ orderid" });
   }
 
   try {
-    console.log(`🛒 Processing purchase: ID=${id}, Username=${USERNAME}`);
+    console.log(`📜 Fetching order history for: Username=${username || "N/A"}, OrderID=${orderid || "N/A"}`);
 
-    const response = await axios.post(
-      "https://byshop.me/api/buy",
-      {
-        id,
-        keyapi: BYSHOP_API_KEY,
-        username: USERNAME,
-      },
-      { timeout: 10000 } // ⏳ ตั้งค่า Timeout 10 วินาที
-    );
+    const requestData = {
+      keyapi: BYSHOP_API_KEY,
+    };
 
-    console.log("📢 API Response (Buy):", response.data); // ✅ Debug Response
+    // 🔹 ใช้ username_customer หรือ orderid ตามเงื่อนไข
+    if (username) {
+      requestData.username_customer = username;
+    }
 
-    if (response.data.status === "success") {
-      res.json({
-        status: "success",
-        email: response.data.email,
-        password: response.data.password,
-      });
+    if (orderid) {
+      requestData.orderid = orderid;
+    }
+
+    // 🔹 เรียก API ของ ByShop
+    const response = await axios.post("https://byshop.me/api/history", requestData, { timeout: 10000 });
+
+    console.log("📢 API Response (History):", response.data);
+
+    // 🔹 ตรวจสอบว่ามีข้อมูลจริงหรือไม่
+    if (response.data && Array.isArray(response.data)) {
+      return res.status(200).json({ status: "success", orders: response.data });
     } else {
-      console.error("⚠️ Purchase failed:", response.data);
-      res.status(400).json({ status: "error", message: "การสั่งซื้อไม่สำเร็จ", error: response.data });
+      return res.status(400).json({ status: "error", message: "❌ ไม่พบข้อมูลการสั่งซื้อ" });
     }
   } catch (error) {
-    console.error("❌ Error purchasing product:", error?.response?.data || error.message);
-    res.status(500).json({
+    console.error("❌ Error fetching order history:", error?.response?.data || error.message);
+    return res.status(500).json({
       status: "error",
-      message: "เกิดข้อผิดพลาดในการเชื่อมต่อ API",
+      message: "❌ เกิดข้อผิดพลาดในการดึงข้อมูล",
       error: error?.response?.data || error.message,
     });
   }

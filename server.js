@@ -6,9 +6,11 @@ const multer = require("multer");
 const path = require("path");
 const axios = require("axios");
 const db = require("./config/db");
+
 const authRoutes = require("./routes/authRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
 const userRoutes = require("./routes/userRoutes");
+const orderRoutes = require("./routes/orderRoutes"); // ✅ เพิ่มเส้นทาง Order History
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -24,7 +26,7 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({ storage });
 
 // 🔹 ตั้งค่า CORS ให้ครอบคลุม
 app.use(
@@ -43,6 +45,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", userRoutes);
 app.use("/api/admin/upload-banner", upload.single("banner"), bannerRoutes);
+app.use("/api/order-history", orderRoutes); // ✅ เพิ่ม API สำหรับดึงประวัติการสั่งซื้อ
 
 // ✅ **API Proxy ดึงสินค้าจาก ByShop**
 app.get("/api/products", async (req, res) => {
