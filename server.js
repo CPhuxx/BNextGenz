@@ -10,7 +10,7 @@ const db = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
 const userRoutes = require("./routes/userRoutes");
-const orderRoutes = require("./routes/orderRoutes"); // ✅ เพิ่มเส้นทาง Order History
+const orderRoutes = require("./routes/orderRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -28,7 +28,6 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// 🔹 ตั้งค่า CORS ให้ครอบคลุม
 app.use(
   cors({
     origin: "http://localhost:5173",
@@ -45,7 +44,33 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", userRoutes);
 app.use("/api/admin/upload-banner", upload.single("banner"), bannerRoutes);
-app.use("/api/order-history", orderRoutes); // ✅ เพิ่ม API สำหรับดึงประวัติการสั่งซื้อ
+app.use("/api/order-history", orderRoutes);
+
+// ✅ **API เช็คยอดเงินจาก ByShop**
+app.post("/api/money", async (req, res) => {
+  try {
+    const response = await axios.post(
+      "https://byshop.me/api/money",
+      { keyapi: BYSHOP_API_KEY },
+      { timeout: 10000 }
+    );
+
+    console.log("📢 API Response (Money Check):", response.data);
+
+    if (response.data.status === "success") {
+      res.json({ status: "success", money: parseFloat(response.data.money) });
+    } else {
+      res.status(400).json({ status: "error", message: "❌ ไม่สามารถดึงยอดเงินได้" });
+    }
+  } catch (error) {
+    console.error("❌ Error fetching money:", error.response ? error.response.data : error.message);
+    res.status(500).json({
+      status: "error",
+      message: "❌ เกิดข้อผิดพลาดในการดึงยอดเงิน",
+      error: error.response ? error.response.data : error.message,
+    });
+  }
+});
 
 // ✅ **API Proxy ดึงสินค้าจาก ByShop**
 app.get("/api/products", async (req, res) => {
@@ -87,8 +112,40 @@ app.post("/api/buy", async (req, res) => {
       return res.status(400).json({ status: "error", message: "❌ ต้องระบุ ID และ Username" });
     }
 
-    console.log(`🛒 Processing purchase: ID=${id}, Username=${username}`);
+    console.log(`🛒 Checking balance before purchase: ID=${id}, Username=${username}`);
 
+    // ✅ 1. ดึงยอดเงินจาก ByShop
+    const moneyResponse = await axios.post(
+      "https://byshop.me/api/money",
+      { keyapi: BYSHOP_API_KEY },
+      { timeout: 10000 }
+    );
+
+    if (moneyResponse.data.status !== "success") {
+      return res.status(400).json({ status: "error", message: "❌ ไม่สามารถดึงยอดเงินได้" });
+    }
+
+    const userBalance = parseFloat(moneyResponse.data.money);
+    console.log(`💰 User balance: ${userBalance}`);
+
+    // ✅ 2. ดึงราคาสินค้า
+    const productsResponse = await axios.get("https://byshop.me/api/product", { timeout: 10000 });
+    const product = productsResponse.data.find((p) => p.id === id);
+
+    if (!product) {
+      return res.status(400).json({ status: "error", message: "❌ ไม่พบสินค้า" });
+    }
+
+    const productPrice = parseFloat(product.price);
+    console.log(`🛍️ Product price: ${productPrice}`);
+
+    // ✅ 3. เช็คว่าเครดิตพอหรือไม่
+    if (userBalance < productPrice) {
+      return res.status(400).json({ status: "error", message: "❌ เครดิตไม่พอ กรุณาเติมเงินก่อน" });
+    }
+
+    // ✅ 4. ทำรายการสั่งซื้อ
+    console.log(`🛒 Processing purchase: ID=${id}, Username=${username}`);
     const response = await axios.post(
       "https://byshop.me/api/buy",
       {
@@ -101,14 +158,10 @@ app.post("/api/buy", async (req, res) => {
 
     console.log("📢 API Response (Buy):", response.data);
 
-    if (response.data && response.data.status === "success") {
+    if (response.data.status === "success") {
       res.json({ status: "success", email: response.data.email, password: response.data.password });
     } else {
-      res.status(400).json({ 
-        status: "error", 
-        message: "❌ การสั่งซื้อไม่สำเร็จ โปรดตรวจสอบ API หรือเครดิต",
-        error: response.data 
-      });
+      res.status(400).json({ status: "error", message: "❌ การสั่งซื้อไม่สำเร็จ", error: response.data });
     }
   } catch (error) {
     console.error("❌ Error purchasing product:", error.response ? error.response.data : error.message);
