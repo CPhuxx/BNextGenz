@@ -5,6 +5,7 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const path = require("path");
 const axios = require("axios");
+const FormData = require("form-data"); // ✅ นำเข้า FormData
 
 const authRoutes = require("./routes/authRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
@@ -14,7 +15,8 @@ const moneyRoutes = require("./routes/moneyRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const BYSHOP_API_KEY = "BYShop-m0XNSdX68cilPrX9gcZ81arPPN4NJv";
+const HOST = process.env.HOST || "0.0.0.0"; // รองรับทุก IP ในเครือข่าย
+const BYSHOP_API_KEY = process.env.BYSHOP_API_KEY || "BYShop-m0XNSdX68cilPrX9gcZ81arPPN4NJv";
 
 // 🔹 ตั้งค่าอัปโหลดไฟล์
 const storage = multer.diskStorage({
@@ -29,7 +31,7 @@ const upload = multer({ storage });
 
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: ["http://localhost:5173", "http://172.20.12.22:5173"], // อนุญาตให้ใช้จากทั้งสอง host
     credentials: true,
     methods: "GET,POST,OPTIONS",
     allowedHeaders: "Content-Type,Authorization",
@@ -64,42 +66,44 @@ app.get("/api/products", async (req, res) => {
 app.post("/api/buy", async (req, res) => {
   try {
     let { id, username_customer } = req.body;
-    if (!id || !username_customer) {
-      return res.status(400).json({ status: "error", message: "❌ ต้องระบุ ID สินค้า และ username_customer" });
-    }
-
-    // ✅ ปรับให้ใช้ username_customer ที่ถูกต้อง
-    if (username_customer !== "puridet009") {
-      console.warn(`⚠️ แก้ไข username_customer: ${username_customer} -> puridet009`);
-      username_customer = "puridet009";
+    if (!id) {
+      return res.status(400).json({ status: "error", message: "❌ ต้องระบุ ID สินค้า" });
     }
 
     console.log(`🛒 Processing purchase: ID=${id}, Username=${username_customer}, KeyAPI=${BYSHOP_API_KEY}`);
 
-    const response = await axios.post(
-      "https://byshop.me/api/buy",
-      {
-        id,
-        keyapi: BYSHOP_API_KEY,
-        username_customer,
+    // ✅ สร้าง form-data
+    const formData = new FormData();
+    formData.append("id", id);
+    formData.append("keyapi", BYSHOP_API_KEY);
+    
+    // ✅ ใส่ username_customer ถ้ามี
+    if (username_customer) {
+      formData.append("username_customer", username_customer);
+    }
+
+    // ✅ ส่ง form-data ไปยัง ByShop API
+    const response = await axios.post("https://byshop.me/api/buy", formData, {
+      headers: {
+        ...formData.getHeaders(), // ✅ ใช้ headers ของ form-data
       },
-      { timeout: 10000 }
-    );
+      timeout: 10000,
+    });
 
     console.log("📢 API Response (Buy):", response.data);
 
     if (response.data.status === "success") {
-      res.json(response.data);
+      return res.json(response.data);
     } else {
-      res.status(400).json({ status: "error", message: "❌ การสั่งซื้อไม่สำเร็จ", error: response.data });
+      return res.status(400).json({ status: "error", message: response.data.message || "❌ การสั่งซื้อไม่สำเร็จ" });
     }
   } catch (error) {
     console.error("❌ API Error:", error.response ? error.response.data : error.message);
-    res.status(500).json({ status: "error", message: "❌ เกิดข้อผิดพลาดในการสั่งซื้อสินค้า" });
+    return res.status(500).json({ status: "error", message: "❌ เกิดข้อผิดพลาดในการสั่งซื้อสินค้า" });
   }
 });
 
-// 🔹 เริ่มต้น Server
-app.listen(PORT, () => {
-  console.log(`✅ Server is running on http://localhost:${PORT}`);
+// 🔹 เริ่มต้น Server รองรับทั้ง localhost และ 172.20.12.22
+app.listen(PORT, HOST, () => {
+  console.log(`✅ Server is running on http://localhost:${PORT} and http://${HOST}:${PORT}`);
 });

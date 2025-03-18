@@ -2,7 +2,14 @@ const express = require("express");
 const axios = require("axios");
 const router = express.Router();
 
-const BYSHOP_API_KEY = "BYShop-m0XNSdX68cilPrX9gcZ81arPPN4NJv";
+const BYSHOP_API_KEY = process.env.BYSHOP_API_KEY; // ✅ โหลด API Key จาก .env
+
+// ✅ ตรวจสอบว่า API Key ถูกโหลดมาจาก .env หรือไม่
+if (!BYSHOP_API_KEY) {
+  console.error("❌ ERROR: BYSHOP_API_KEY is missing! ตรวจสอบ .env");
+} else {
+  console.log("✅ BYSHOP_API_KEY Loaded Successfully:", BYSHOP_API_KEY);
+}
 
 // ✅ **API Proxy ดึงสินค้าจาก ByShop**
 router.get("/", async (req, res) => {
@@ -15,9 +22,11 @@ router.get("/", async (req, res) => {
     try {
       const response = await axios.get("https://byshop.me/api/product", {
         headers: { "Content-Type": "application/json" },
-        params: { keyapi: BYSHOP_API_KEY },
+        params: { keyapi: BYSHOP_API_KEY }, // ✅ ส่ง API Key ผ่าน params
         timeout: 10000,
       });
+
+      console.log("📥 API Response:", response.data);
 
       if (response.data && response.data.status === "success" && Array.isArray(response.data.products)) {
         console.log("✅ Products fetched successfully!");
