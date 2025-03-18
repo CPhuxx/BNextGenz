@@ -2,13 +2,13 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const router = express.Router();
-const db = require("../config/db"); // Database connection
+const db = require("../config/db"); // เชื่อมต่อฐานข้อมูล
 
 // ✅ POST request for registration
 router.post("/register", async (req, res) => {
-  const { username, email, password } = req.body;
+  const { username_customer, email, password } = req.body;
 
-  if (!username || !email || !password) {
+  if (!username_customer || !email || !password) {
     return res.status(400).json({ success: false, message: "❌ กรุณากรอกข้อมูลให้ครบถ้วน" });
   }
 
@@ -21,8 +21,8 @@ router.post("/register", async (req, res) => {
       const hashedPassword = await bcrypt.hash(password, 10);
 
       db.query(
-        "INSERT INTO users (username, email, password, credit) VALUES (?, ?, ?, 0)", 
-        [username, email, hashedPassword], 
+        "INSERT INTO users (username_customer, email, password, credit) VALUES (?, ?, ?, 0)", 
+        [username_customer, email, hashedPassword], 
         (err, result) => {
           if (err) {
             return res.status(500).json({ success: false, message: "❌ เกิดข้อผิดพลาดกับฐานข้อมูล" });
@@ -58,7 +58,7 @@ router.post("/login", async (req, res) => {
       }
 
       const token = jwt.sign(
-        { id: user.id, role: user.role }, 
+        { id: user.id, username_customer: user.username_customer, role: user.role }, 
         process.env.JWT_SECRET, 
         { expiresIn: "7d" }
       );
@@ -66,7 +66,7 @@ router.post("/login", async (req, res) => {
       res.json({
         success: true,
         token,
-        user: { id: user.id, username: user.username, email: user.email, credit: user.credit, role: user.role }
+        user: { id: user.id, username_customer: user.username_customer, email: user.email, credit: user.credit, role: user.role }
       });
     });
   } catch (error) {
