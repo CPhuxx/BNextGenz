@@ -5,7 +5,6 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const path = require("path");
 const axios = require("axios");
-const db = require("./config/db");
 
 const authRoutes = require("./routes/authRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
@@ -15,7 +14,7 @@ const moneyRoutes = require("./routes/moneyRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const BYSHOP_API_KEY = process.env.BYSHOP_API_KEY;
+const BYSHOP_API_KEY = "BYShop-m0XNSdX68cilPrX9gcZ81arPPN4NJv";
 
 // 🔹 ตั้งค่าอัปโหลดไฟล์
 const storage = multer.diskStorage({
@@ -26,7 +25,6 @@ const storage = multer.diskStorage({
     cb(null, Date.now() + path.extname(file.originalname));
   },
 });
-
 const upload = multer({ storage });
 
 app.use(
@@ -48,116 +46,42 @@ app.use("/api/admin/upload-banner", upload.single("banner"), bannerRoutes);
 app.use("/api/order-history", orderRoutes);
 app.use("/api/money", moneyRoutes);
 
-// ✅ **API เช็คยอดเงินจากบัญชีธนาคาร (ByShop)**
-app.post("/api/bank-transactions", async (req, res) => {
-  try {
-    const { account } = req.body;
-    if (!account) {
-      return res.status(400).json({ status: "error", message: "❌ ต้องระบุหมายเลขบัญชี" });
-    }
-
-    const response = await axios.post("https://byshop.me/api/line_bank", {
-      keyapi: BYSHOP_API_KEY,
-      account,
-    });
-
-    console.log("📢 API Response (Bank Transactions):", response.data);
-
-    if (response.data.status === "success") {
-      res.json({
-        status: "success",
-        transactions: response.data.data,
-      });
-    } else {
-      res.status(400).json({ status: "error", message: "❌ ไม่สามารถดึงข้อมูลธุรกรรมได้" });
-    }
-  } catch (error) {
-    console.error("❌ Error fetching bank transactions:", error.response ? error.response.data : error.message);
-    res.status(500).json({
-      status: "error",
-      message: "❌ เกิดข้อผิดพลาดในการดึงข้อมูลธุรกรรม",
-      error: error.response ? error.response.data : error.message,
-    });
-  }
-});
-
 // ✅ **API Proxy ดึงสินค้าจาก ByShop**
 app.get("/api/products", async (req, res) => {
-  console.log("📢 Fetching products from ByShop...");
-
   try {
-    const response = await axios.get("https://byshop.me/api/product", {
-      headers: { "Content-Type": "application/json" },
-      timeout: 10000,
-    });
-
+    const response = await axios.get("https://byshop.me/api/product", { timeout: 10000 });
     if (response.data && Array.isArray(response.data)) {
       res.json({ status: "success", products: response.data });
     } else {
-      res.status(400).json({
-        status: "error",
-        message: "❌ ไม่สามารถดึงข้อมูลสินค้าได้",
-        error: response.data,
-      });
+      res.status(400).json({ status: "error", message: "❌ ไม่สามารถดึงข้อมูลสินค้าได้" });
     }
   } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: "❌ เกิดข้อผิดพลาดในการดึงข้อมูลสินค้า",
-      error: error.response ? error.response.data : error.message,
-    });
+    res.status(500).json({ status: "error", message: "❌ เกิดข้อผิดพลาดในการดึงข้อมูลสินค้า" });
   }
 });
 
 // ✅ **API Proxy ทำรายการสั่งซื้อผ่าน ByShop**
 app.post("/api/buy", async (req, res) => {
   try {
-    const { id, username } = req.body;
-
-    if (!id || !username) {
-      return res.status(400).json({ status: "error", message: "❌ ต้องระบุ ID และ Username" });
+    let { id, username_customer } = req.body;
+    if (!id || !username_customer) {
+      return res.status(400).json({ status: "error", message: "❌ ต้องระบุ ID สินค้า และ username_customer" });
     }
 
-    console.log(`🛒 Checking balance before purchase: ID=${id}, Username=${username}`);
-
-    // ✅ 1. ดึงยอดเงินจาก ByShop
-    const moneyResponse = await axios.post(
-      "https://byshop.me/api/money",
-      { keyapi: BYSHOP_API_KEY },
-      { timeout: 10000 }
-    );
-
-    if (moneyResponse.data.status !== "success") {
-      return res.status(400).json({ status: "error", message: "❌ ไม่สามารถดึงยอดเงินได้" });
+    // ✅ ปรับให้ใช้ username_customer ที่ถูกต้อง
+    if (username_customer !== "puridet009") {
+      console.warn(`⚠️ แก้ไข username_customer: ${username_customer} -> puridet009`);
+      username_customer = "puridet009";
     }
 
-    const userBalance = parseFloat(moneyResponse.data.money);
-    console.log(`💰 User balance: ${userBalance}`);
+    console.log(`🛒 Processing purchase: ID=${id}, Username=${username_customer}, KeyAPI=${BYSHOP_API_KEY}`);
 
-    // ✅ 2. ดึงราคาสินค้า
-    const productsResponse = await axios.get("https://byshop.me/api/product", { timeout: 10000 });
-    const product = productsResponse.data.find((p) => p.id === id);
-
-    if (!product) {
-      return res.status(400).json({ status: "error", message: "❌ ไม่พบสินค้า" });
-    }
-
-    const productPrice = parseFloat(product.price);
-    console.log(`🛍️ Product price: ${productPrice}`);
-
-    // ✅ 3. เช็คว่าเครดิตพอหรือไม่
-    if (userBalance < productPrice) {
-      return res.status(400).json({ status: "error", message: "❌ เครดิตไม่พอ กรุณาเติมเงินก่อน" });
-    }
-
-    // ✅ 4. ทำรายการสั่งซื้อ
-    console.log(`🛒 Processing purchase: ID=${id}, Username=${username}`);
     const response = await axios.post(
       "https://byshop.me/api/buy",
       {
         id,
         keyapi: BYSHOP_API_KEY,
-        username,
+        username_customer,
       },
       { timeout: 10000 }
     );
@@ -165,25 +89,14 @@ app.post("/api/buy", async (req, res) => {
     console.log("📢 API Response (Buy):", response.data);
 
     if (response.data.status === "success") {
-      res.json({ status: "success", email: response.data.email, password: response.data.password });
+      res.json(response.data);
     } else {
       res.status(400).json({ status: "error", message: "❌ การสั่งซื้อไม่สำเร็จ", error: response.data });
     }
   } catch (error) {
-    console.error("❌ Error purchasing product:", error.response ? error.response.data : error.message);
-    res.status(500).json({
-      status: "error",
-      message: "❌ เกิดข้อผิดพลาดในการสั่งซื้อสินค้า",
-      error: error.response ? error.response.data : error.message,
-    });
+    console.error("❌ API Error:", error.response ? error.response.data : error.message);
+    res.status(500).json({ status: "error", message: "❌ เกิดข้อผิดพลาดในการสั่งซื้อสินค้า" });
   }
-});
-
-// ✅ **Handle Preflight Request (OPTIONS)**
-app.options("*", (req, res) => {
-  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.sendStatus(200);
 });
 
 // 🔹 เริ่มต้น Server
