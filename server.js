@@ -5,13 +5,14 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const path = require("path");
 const axios = require("axios");
-const FormData = require("form-data"); // ✅ นำเข้า FormData
+const FormData = require("form-data");
 
 const authRoutes = require("./routes/authRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
 const userRoutes = require("./routes/userRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const moneyRoutes = require("./routes/moneyRoutes");
+const gameProductRoutes = require("./routes/gameProductRoutes"); // ✅ เพิ่มเส้นทางสำหรับข้อมูลเกม
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -47,6 +48,7 @@ app.use("/api/admin", userRoutes);
 app.use("/api/admin/upload-banner", upload.single("banner"), bannerRoutes);
 app.use("/api/order-history", orderRoutes);
 app.use("/api/money", moneyRoutes);
+app.use("/api/game-products", gameProductRoutes); // ✅ เส้นทางสำหรับข้อมูลเกม
 
 // ✅ **API Proxy ดึงสินค้าจาก ByShop**
 app.get("/api/products", async (req, res) => {
@@ -59,6 +61,44 @@ app.get("/api/products", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ status: "error", message: "❌ เกิดข้อผิดพลาดในการดึงข้อมูลสินค้า" });
+  }
+});
+
+// ✅ **API Proxy ดึงข้อมูลสินค้าเกมจาก ByShop**
+app.get("/api/game-products", async (req, res) => {
+  try {
+    // ส่งคำขอไปยัง ByShop API สำหรับข้อมูลสินค้าเกม
+    const response = await axios.get("https://byshop.me/api/bypay?api=game", {
+      params: { api: "game" }, // ดึงเฉพาะสินค้าเกม
+    });
+
+    if (response.status === 200) {
+      // แปลงข้อมูลสินค้าก่อนส่งกลับ
+      const gameProducts = response.data.map((product) => ({
+        name: product.name,
+        img: product.img,
+        info: product.info,
+        type_code: product.type_code,
+        price: product.price,
+        discount: product.discount,
+        category: product.category,
+        format_id: product.format_id,
+      }));
+
+      return res.json({
+        status: "success",
+        gameProducts: gameProducts,
+      });
+    } else {
+      return res.status(400).json({ status: "error", message: "❌ ไม่สามารถดึงข้อมูลสินค้า" });
+    }
+  } catch (error) {
+    console.error("❌ Error fetching game products:", error.message);
+    return res.status(500).json({
+      status: "error",
+      message: "❌ เกิดข้อผิดพลาดในการดึงข้อมูลสินค้าเกม",
+      error: error.message,
+    });
   }
 });
 
