@@ -2,30 +2,32 @@ const express = require("express");
 const axios = require("axios");
 const router = express.Router();
 
-const BYSHOP_API_KEY = process.env.BYSHOP_API_KEY; // ✅ ใช้ API Key จาก .env
+const BYSHOP_API_KEY = process.env.BYSHOP_API_KEY;
 
-// ✅ ตรวจสอบว่า API Key ถูกโหลดมาจาก .env หรือไม่
-if (!BYSHOP_API_KEY) {
-  console.error("❌ ERROR: BYSHOP_API_KEY is missing! ตรวจสอบ .env");
-} else {
-  console.log("✅ BYSHOP_API_KEY Loaded Successfully:", BYSHOP_API_KEY);
-}
-
-// ✅ API ดึงเครดิตจาก ByShop
 router.post("/", async (req, res) => {
   try {
-    console.log("📢 Checking balance with API Key:", BYSHOP_API_KEY);
+    const { user_id } = req.body;
+    if (!user_id) {
+      return res.status(400).json({ status: "error", message: "❌ ต้องระบุ user_id" });
+    }
 
-    // ✅ ส่งคำขอไปยัง ByShop API
+    console.log(`📢 กำลังตรวจสอบยอดเงินของผู้ใช้: ${user_id}`);
+    console.log(`🔑 Using BYSHOP_API_KEY: ${BYSHOP_API_KEY}`); // ตรวจสอบว่า API Key มีค่าจริงๆ หรือไม่
+
+    // ตรวจสอบว่า API Key มีค่า
+    if (!BYSHOP_API_KEY) {
+      return res.status(500).json({ status: "error", message: "❌ API Key ไม่ถูกต้อง หรือไม่ถูกโหลด" });
+    }
+
+    // ส่ง API Key ไปกับ request
     const response = await axios.post(
       "https://byshop.me/api/money",
-      { keyapi: BYSHOP_API_KEY },
-      { timeout: 10000 }
+      { keyapi: BYSHOP_API_KEY, user_id: user_id },
+      { headers: { "Content-Type": "application/json" }, timeout: 10000 }
     );
 
     console.log("📥 API Response:", response.data);
 
-    // ✅ ตรวจสอบว่าสำเร็จหรือไม่
     if (response.data.status === "success") {
       return res.json({ status: "success", money: response.data.money });
     } else {

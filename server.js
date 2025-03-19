@@ -12,27 +12,22 @@ const bannerRoutes = require("./routes/bannerRoutes");
 const userRoutes = require("./routes/userRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const moneyRoutes = require("./routes/moneyRoutes");
-const gameProductRoutes = require("./routes/gameProductRoutes"); // ✅ เพิ่มเส้นทางสำหรับข้อมูลเกม
+const gameProductRoutes = require("./routes/gameProductRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const HOST = process.env.HOST || "0.0.0.0"; // รองรับทุก IP ในเครือข่าย
-const BYSHOP_API_KEY = process.env.BYSHOP_API_KEY || "BYShop-m0XNSdX68cilPrX9gcZ81arPPN4NJv";
+const HOST = process.env.HOST || "0.0.0.0";
+const BYSHOP_API_KEY = process.env.BYSHOP_API_KEY || "";
 
-// 🔹 ตั้งค่าอัปโหลดไฟล์
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/banners/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
-const upload = multer({ storage });
+console.log("🔑 BYSHOP_API_KEY Loaded:", BYSHOP_API_KEY || "❌ ไม่พบ API Key!");
 
+// ✅ ตั้งค่า `multer` เพื่อรองรับ `form-data`
+const upload = multer();
+
+// ✅ ตั้งค่า `cors` และ `body-parser`
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://172.20.12.22:5173"], // อนุญาตให้ใช้จากทั้งสอง host
+    origin: ["http://localhost:5173", "http://172.20.12.22:5173"],
     credentials: true,
     methods: "GET,POST,OPTIONS",
     allowedHeaders: "Content-Type,Authorization",
@@ -41,96 +36,81 @@ app.use(
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(upload.any()); // ✅ รองรับ `form-data`
 
-// 🔹 ตั้งค่า Routes
+// ✅ ตั้งค่า Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", userRoutes);
 app.use("/api/admin/upload-banner", upload.single("banner"), bannerRoutes);
 app.use("/api/order-history", orderRoutes);
 app.use("/api/money", moneyRoutes);
-app.use("/api/game-products", gameProductRoutes); // ✅ เส้นทางสำหรับข้อมูลเกม
+app.use("/api/game-products", gameProductRoutes);
 
-// ✅ **API Proxy ดึงสินค้าจาก ByShop**
+// ✅ **ดึงสินค้าจาก ByShop**
 app.get("/api/products", async (req, res) => {
   try {
     const response = await axios.get("https://byshop.me/api/product", { timeout: 10000 });
     if (response.data && Array.isArray(response.data)) {
-      res.json({ status: "success", products: response.data });
+      return res.json({ status: "success", products: response.data });
     } else {
-      res.status(400).json({ status: "error", message: "❌ ไม่สามารถดึงข้อมูลสินค้าได้" });
+      return res.status(400).json({ status: "error", message: "❌ ไม่สามารถดึงข้อมูลสินค้าได้" });
     }
   } catch (error) {
-    res.status(500).json({ status: "error", message: "❌ เกิดข้อผิดพลาดในการดึงข้อมูลสินค้า" });
+    return res.status(500).json({ status: "error", message: "❌ เกิดข้อผิดพลาดในการดึงข้อมูลสินค้า" });
   }
 });
 
-// ✅ **API Proxy ดึงข้อมูลสินค้าเกมจาก ByShop**
-app.get("/api/game-products", async (req, res) => {
+// ✅ **อัพเดตราคาสินค้าใน ByShop**
+app.post("/api/update-price", async (req, res) => {
+  const { appId, price } = req.body;
+
+  if (!appId || isNaN(price) || price <= 0) {
+    return res.status(400).json({ status: "error", message: "❌ ข้อมูลไม่ถูกต้อง" });
+  }
+
+  console.log(`📢 อัพเดตราคาสินค้า ID: ${appId} เป็นราคา: ${price}`);
+
   try {
-    // ส่งคำขอไปยัง ByShop API สำหรับข้อมูลสินค้าเกม
-    const response = await axios.get("https://byshop.me/api/bypay?api=game", {
-      params: { api: "game" }, // ดึงเฉพาะสินค้าเกม
+    const response = await axios.post("https://byshop.me/api/product/update", {
+      keyapi: BYSHOP_API_KEY, 
+      id: appId,
+      price: price,
     });
 
-    if (response.status === 200) {
-      // แปลงข้อมูลสินค้าก่อนส่งกลับ
-      const gameProducts = response.data.map((product) => ({
-        name: product.name,
-        img: product.img,
-        info: product.info,
-        type_code: product.type_code,
-        price: product.price,
-        discount: product.discount,
-        category: product.category,
-        format_id: product.format_id,
-      }));
+    console.log("📥 API Response สำหรับอัพเดตราคา:", response.data);
 
-      return res.json({
-        status: "success",
-        gameProducts: gameProducts,
-      });
+    if (response.data.status === "success") {
+      return res.json({ status: "success", message: "✅ ราคาสินค้าถูกอัพเดต" });
     } else {
-      return res.status(400).json({ status: "error", message: "❌ ไม่สามารถดึงข้อมูลสินค้า" });
+      return res.status(400).json({ status: "error", message: "❌ ไม่สามารถอัพเดตราคาได้" });
     }
   } catch (error) {
-    console.error("❌ Error fetching game products:", error.message);
-    return res.status(500).json({
-      status: "error",
-      message: "❌ เกิดข้อผิดพลาดในการดึงข้อมูลสินค้าเกม",
-      error: error.message,
-    });
+    console.error("❌ Error updating product price:", error.message);
+    return res.status(500).json({ status: "error", message: "❌ เกิดข้อผิดพลาดในการอัพเดตราคา" });
   }
 });
 
-// ✅ **API Proxy ทำรายการสั่งซื้อผ่าน ByShop**
+// ✅ **สั่งซื้อสินค้าผ่าน ByShop**
 app.post("/api/buy", async (req, res) => {
   try {
-    let { id, username_customer } = req.body;
-    if (!id) {
-      return res.status(400).json({ status: "error", message: "❌ ต้องระบุ ID สินค้า" });
+    let { id, user_id } = req.body;
+    if (!id || !user_id) {
+      return res.status(400).json({ status: "error", message: "❌ ต้องระบุ ID สินค้า และ user_id" });
     }
 
-    console.log(`🛒 Processing purchase: ID=${id}, Username=${username_customer}, KeyAPI=${BYSHOP_API_KEY}`);
+    console.log(`🛒 Processing purchase: ID=${id}, User ID=${user_id}`);
 
-    // ✅ สร้าง form-data
     const formData = new FormData();
     formData.append("id", id);
     formData.append("keyapi", BYSHOP_API_KEY);
-    
-    // ✅ ใส่ username_customer ถ้ามี
-    if (username_customer) {
-      formData.append("username_customer", username_customer);
-    }
+    formData.append("user_id", user_id);
 
-    // ✅ ส่ง form-data ไปยัง ByShop API
     const response = await axios.post("https://byshop.me/api/buy", formData, {
-      headers: {
-        ...formData.getHeaders(), // ✅ ใช้ headers ของ form-data
-      },
+      headers: { ...formData.getHeaders() },
       timeout: 10000,
     });
 
-    console.log("📢 API Response (Buy):", response.data);
+    console.log("📥 API Response:", response.data);
 
     if (response.data.status === "success") {
       return res.json(response.data);
@@ -138,12 +118,49 @@ app.post("/api/buy", async (req, res) => {
       return res.status(400).json({ status: "error", message: response.data.message || "❌ การสั่งซื้อไม่สำเร็จ" });
     }
   } catch (error) {
-    console.error("❌ API Error:", error.response ? error.response.data : error.message);
+    console.error("❌ Error processing order:", error.response ? error.response.data : error.message);
     return res.status(500).json({ status: "error", message: "❌ เกิดข้อผิดพลาดในการสั่งซื้อสินค้า" });
   }
 });
 
-// 🔹 เริ่มต้น Server รองรับทั้ง localhost และ 172.20.12.22
+// ✅ **ดึงข้อมูลเครดิตของผู้ใช้จาก ByShop**
+app.post("/api/money", async (req, res) => {
+  try {
+    const { user_id } = req.body;
+    if (!user_id) {
+      return res.status(400).json({ status: "error", message: "❌ ต้องระบุ user_id" });
+    }
+
+    console.log(`📢 กำลังตรวจสอบยอดเงินของผู้ใช้: ${user_id}`);
+    console.log(`🔑 ใช้ BYSHOP_API_KEY: ${BYSHOP_API_KEY}`);
+
+    if (!BYSHOP_API_KEY) {
+      return res.status(500).json({ status: "error", message: "❌ API Key ไม่ถูกต้อง หรือไม่ถูกโหลด" });
+    }
+
+    const formData = new FormData();
+    formData.append("keyapi", BYSHOP_API_KEY);
+    formData.append("user_id", user_id);
+
+    const response = await axios.post("https://byshop.me/api/money", formData, {
+      headers: { ...formData.getHeaders() },
+      timeout: 10000,
+    });
+
+    console.log("📥 API Response:", response.data);
+
+    if (response.data.status === "success") {
+      return res.json({ status: "success", money: response.data.money });
+    } else {
+      return res.status(400).json({ status: "error", message: response.data.message });
+    }
+  } catch (error) {
+    console.error("❌ API Error:", error.response ? error.response.data : error.message);
+    return res.status(500).json({ status: "error", message: "❌ ไม่สามารถดึงข้อมูลเครดิตได้" });
+  }
+});
+
+// ✅ เริ่มต้นเซิร์ฟเวอร์
 app.listen(PORT, HOST, () => {
-  console.log(`✅ Server is running on http://localhost:${PORT} and http://${HOST}:${PORT}`);
+  console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
